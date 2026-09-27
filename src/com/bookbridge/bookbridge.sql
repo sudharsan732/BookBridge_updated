@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS transfer_requests (
     from_branch VARCHAR(100),
     to_branch VARCHAR(100),
     requester_name VARCHAR(100) DEFAULT 'Member',
+    quantity INT DEFAULT 1,
     status VARCHAR(50) DEFAULT 'PENDING',
     request_date VARCHAR(50)
 );
@@ -42,9 +43,32 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
     book_name VARCHAR(100),
     author VARCHAR(100) DEFAULT 'Unknown',
+    category VARCHAR(100) DEFAULT 'General',
+    requested_branch VARCHAR(100) DEFAULT 'Guindy Library',
     requester_name VARCHAR(100) DEFAULT 'Member',
     status VARCHAR(50) DEFAULT 'PENDING',
     request_date VARCHAR(50)
+);
+
+CREATE TABLE IF NOT EXISTS borrow_records (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    username VARCHAR(50) NOT NULL,
+    book_id INT NOT NULL,
+    book_title VARCHAR(100) NOT NULL,
+    branch_id INT NOT NULL,
+    borrow_date VARCHAR(50),
+    return_date VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'BORROWED'
+);
+
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    message VARCHAR(255) NOT NULL,
+    type VARCHAR(20) DEFAULT 'INFO',
+    created_at VARCHAR(50),
+    is_read BOOLEAN DEFAULT FALSE
 );
 
 -- Seed Branches
@@ -54,9 +78,6 @@ INSERT IGNORE INTO branches VALUES
 (3, 'Velachery Library', 'Velachery');
 
 -- Seed Default Accounts
--- Admin: admin / admin123
--- Member: purushothaman / user123 (Guindy Branch)
--- Member: alice / user123 (Adyar Branch)
 INSERT IGNORE INTO users (user_id, username, password, full_name, role, branch_id, created_at) VALUES
 (1, 'admin', 'admin123', 'System Administrator', 'ADMIN', 1, '2026-09-09 10:00'),
 (2, 'purushothaman', 'user123', 'Purushothaman', 'MEMBER', 1, '2026-09-09 10:00'),

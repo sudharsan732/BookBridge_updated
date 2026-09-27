@@ -1,6 +1,7 @@
 package com.bookbridge.server;
 
 import com.bookbridge.model.Book;
+import com.bookbridge.model.BorrowRecord;
 import com.bookbridge.model.Branch;
 import com.bookbridge.model.PurchaseRequest;
 import com.bookbridge.model.TransferRequest;
@@ -44,6 +45,7 @@ public class ClientHandler implements Runnable {
                 NetworkMessage response = processRequest(request);
                 out.writeObject(response);
                 out.flush();
+                out.reset();
             }
         } catch (Exception e) {
             System.err.println("[ClientHandler] Notice from " + clientIp + ": " + e.getMessage());
@@ -111,7 +113,8 @@ public class ClientHandler implements Runnable {
                     Object[] borrowData = (Object[]) req.payload;
                     int bookId = (int) borrowData[0];
                     int userBranchId = (int) borrowData[1];
-                    String resultMsg = DatabaseConnection.borrowBook(bookId, userBranchId);
+                    String username = (borrowData.length > 2 && borrowData[2] != null) ? (String) borrowData[2] : "Member";
+                    String resultMsg = DatabaseConnection.borrowBook(bookId, userBranchId, username);
                     return NetworkMessage.success(req.action, resultMsg);
                 }
 
@@ -119,7 +122,8 @@ public class ClientHandler implements Runnable {
                     Object[] returnData = (Object[]) req.payload;
                     int bookId = (int) returnData[0];
                     int userBranchId = (int) returnData[1];
-                    DatabaseConnection.returnBook(bookId, userBranchId);
+                    String username = (returnData.length > 2 && returnData[2] != null) ? (String) returnData[2] : "Member";
+                    DatabaseConnection.returnBook(bookId, userBranchId, username);
                     return NetworkMessage.success(req.action, "Book returned successfully!");
                 }
 
@@ -207,6 +211,30 @@ public class ClientHandler implements Runnable {
                 case "GET_STATISTICS": {
                     Map<String, Object> stats = DatabaseConnection.getSystemStatistics();
                     return NetworkMessage.success(req.action, stats);
+                }
+
+                case "GET_USER_NOTIFICATIONS": {
+                    String username = (String) req.payload;
+                    List<com.bookbridge.model.UserNotification> notes = DatabaseConnection.getUserNotifications(username);
+                    return NetworkMessage.success(req.action, notes);
+                }
+
+                case "GET_USER_BORROWED_BOOKS": {
+                    String username = (String) req.payload;
+                    List<BorrowRecord> records = DatabaseConnection.getUserBorrowedBooks(username);
+                    return NetworkMessage.success(req.action, records);
+                }
+
+                case "GET_USER_TRANSFER_REQUESTS": {
+                    String username = (String) req.payload;
+                    List<TransferRequest> list = DatabaseConnection.getUserTransferRequests(username);
+                    return NetworkMessage.success(req.action, list);
+                }
+
+                case "GET_USER_PURCHASE_REQUESTS": {
+                    String username = (String) req.payload;
+                    List<PurchaseRequest> list = DatabaseConnection.getUserPurchaseRequests(username);
+                    return NetworkMessage.success(req.action, list);
                 }
 
                 default:

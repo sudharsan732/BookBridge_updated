@@ -5,6 +5,7 @@ import com.bookbridge.client.service.LibraryService;
 import com.bookbridge.client.service.RequestService;
 import com.bookbridge.model.Book;
 import com.bookbridge.model.Branch;
+import com.bookbridge.model.BorrowRecord;
 import com.bookbridge.model.PurchaseRequest;
 import com.bookbridge.model.TransferRequest;
 import com.bookbridge.model.User;
@@ -56,7 +57,7 @@ public class WebUI {
         server.start();
 
         System.out.println("=================================================");
-        System.out.println(" 🌐 BookBridge Premium Web UI Server Online! ");
+        System.out.println(" 🌐 BookBridge Multi-Branch Library Web Portal Online! ");
         System.out.println(" 🔗 Access Web Portal: http://localhost:" + PORT);
         System.out.println(" 🔑 Default Admin: admin / admin123");
         System.out.println(" 🔑 Default User : purushothaman / user123");
@@ -67,21 +68,17 @@ public class WebUI {
     // 🎨 DESIGN SYSTEM & TEMPLATE WRAPPER (Separation of Concerns)
     // =========================================================================
     private static String renderPage(String title, String activeNav, String queryParams, User currentUser, String bodyContent) {
-        Map<String, String> params = parseQuery(queryParams);
-        String successMsg = params.get("msg");
-        String errorMsg = params.get("error");
+        StringBuilder navLinksHtml = new StringBuilder();
+        navLinksHtml.append("<a href='/' class='nav-link ").append(activeNav.equals("home") ? "active" : "").append("'>Home</a>");
 
-        StringBuilder flashHtml = new StringBuilder();
-        if (successMsg != null && !successMsg.isEmpty()) {
-            flashHtml.append("<div class='toast toast-success'><span class='toast-icon'>✓</span> ")
-                     .append(escapeHtml(decode(successMsg)))
-                     .append("<button class='toast-close' onclick='this.parentElement.remove()'>×</button></div>");
+        if (currentUser != null) {
+            if (currentUser.isAdmin()) {
+                navLinksHtml.append("<a href='/admin' class='nav-link ").append(activeNav.equals("admin") ? "active" : "").append("'>🛡️ Admin Portal</a>");
+            } else {
+                navLinksHtml.append("<a href='/user' class='nav-link ").append(activeNav.equals("user") ? "active" : "").append("'>👤 Member Dashboard</a>");
+            }
         }
-        if (errorMsg != null && !errorMsg.isEmpty()) {
-            flashHtml.append("<div class='toast toast-error'><span class='toast-icon'>⚠️</span> ")
-                     .append(escapeHtml(decode(errorMsg)))
-                     .append("<button class='toast-close' onclick='this.parentElement.remove()'>×</button></div>");
-        }
+        navLinksHtml.append("<a href='/books' class='nav-link ").append(activeNav.equals("books") ? "active" : "").append("'>All Books</a>");
 
         StringBuilder userBadgeHtml = new StringBuilder();
         if (currentUser != null) {
@@ -247,6 +244,8 @@ public class WebUI {
                 "    .btn-success:hover { background: #34d399; }\n" +
                 "    .btn-warning { background: var(--accent-amber); color: #451a03; font-weight: 700; }\n" +
                 "    .btn-warning:hover { background: #fbbf24; }\n" +
+                "    .btn-cyan { background: var(--accent-cyan); color: #083344; font-weight: 700; }\n" +
+                "    .btn-cyan:hover { background: #67e8f9; }\n" +
                 "    .btn-danger { background: rgba(244, 63, 94, 0.15); color: #fda4af; border: 1px solid rgba(244, 63, 94, 0.4); }\n" +
                 "    .btn-danger:hover { background: var(--accent-rose); color: white; }\n" +
                 "    .btn-secondary { background: rgba(255, 255, 255, 0.08); color: var(--text-main); }\n" +
@@ -264,6 +263,7 @@ public class WebUI {
                 "    .badge-red { background: rgba(244, 63, 94, 0.15); color: #fda4af; border: 1px solid rgba(244, 63, 94, 0.3); }\n" +
                 "    .badge-blue { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }\n" +
                 "    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.3); }\n" +
+                "    .badge-cyan { background: rgba(6, 182, 212, 0.15); color: #a5f3fc; border: 1px solid rgba(6, 182, 212, 0.3); }\n" +
                 "    /* Forms & Inputs */\n" +
                 "    .form-group { margin-bottom: 1.25rem; }\n" +
                 "    label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }\n" +
@@ -284,7 +284,7 @@ public class WebUI {
                 "      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);\n" +
                 "    }\n" +
                 "    /* Tabs */\n" +
-                "    .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; }\n" +
+                "    .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; flex-wrap: wrap; }\n" +
                 "    .tab-btn {\n" +
                 "      background: none; border: none; padding: 12px 18px; color: var(--text-muted); font-size: 0.95rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent;\n" +
                 "    }\n" +
@@ -325,19 +325,15 @@ public class WebUI {
                 "      <span>BookBridge</span>\n" +
                 "    </a>\n" +
                 "    <div class='nav-links'>\n" +
-                "      <a href='/' class='nav-link " + (activeNav.equals("home") ? "active" : "") + "'>Home</a>\n" +
-                "      <a href='/user' class='nav-link " + (activeNav.equals("user") ? "active" : "") + "'>Member Dashboard</a>\n" +
-                "      <a href='/admin' class='nav-link " + (activeNav.equals("admin") ? "active" : "") + "'>Admin Portal</a>\n" +
-                "      <a href='/books' class='nav-link " + (activeNav.equals("books") ? "active" : "") + "'>All Books</a>\n" +
+                "      " + navLinksHtml + "\n" +
                 "      " + userBadgeHtml + "\n" +
                 "    </div>\n" +
                 "  </nav>\n" +
-                "  <div class='toast-container'>" + flashHtml + "</div>\n" +
                 "  <main class='container'>\n" +
                 bodyContent +
                 "  </main>\n" +
                 "  <footer class='footer'>\n" +
-                "    <p>BookBridge Distributed Library Management System • High-Concurrency Architecture</p>\n" +
+                "    <p>BookBridge Multi-Branch Library Management System • High-Performance Distributed Architecture</p>\n" +
                 "  </footer>\n" +
                 "  <script>\n" +
                 "    function openModal(id) { document.getElementById(id).classList.add('active'); }\n" +
@@ -519,7 +515,7 @@ public class WebUI {
     }
 
     // =========================================================================
-    // 3. USER DASHBOARD VIEW
+    // 3. USER DASHBOARD VIEW (Role-Guarded for Members)
     // =========================================================================
     static class UserDashboardHandler implements HttpHandler {
         @Override
@@ -530,73 +526,238 @@ public class WebUI {
                 return;
             }
 
-            Map<String, String> query = parseQuery(t.getRequestURI().getQuery());
-            String searchQuery = query.getOrDefault("q", "");
-            int branchId = currentUser.getBranchId();
-            String branchName = LibraryService.getBranchName(branchId);
-
-            List<Book> books = searchQuery.isEmpty() ? LibraryService.fetchAllBooks() : LibraryService.searchBooks(searchQuery, null);
-
-            StringBuilder tableRows = new StringBuilder();
-            for (Book b : books) {
-                boolean inCurrentBranch = (b.getBranchId() == branchId);
-                boolean hasStock = (b.getAvailableCopies() > 0);
-
-                tableRows.append("<tr>")
-                         .append("<td><span style='font-family: JetBrains Mono; font-size: 0.85rem; color: var(--text-muted);'>#").append(b.getBookId()).append("</span></td>")
-                         .append("<td><strong style='color: white; font-size: 1rem;'>").append(escapeHtml(b.getTitle())).append("</strong><br><span style='font-size: 0.8rem; color: var(--text-muted);'>").append(escapeHtml(b.getCategory())).append("</span></td>")
-                         .append("<td>").append(escapeHtml(b.getAuthor())).append("</td>")
-                         .append("<td><span class='badge ").append(b.getBranchId() == branchId ? "badge-blue" : "badge-amber").append("'>").append(escapeHtml(b.getBranchName() != null ? b.getBranchName() : "Branch " + b.getBranchId())).append("</span></td>")
-                         .append("<td><span class='badge ").append(hasStock ? "badge-green" : "badge-red").append("'>").append(b.getAvailableCopies()).append(" Copies</span></td>")
-                         .append("<td><div style='display: flex; gap: 8px;'>");
-
-                if (inCurrentBranch) {
-                    if (hasStock) {
-                        tableRows.append("<form action='/action/borrow' method='POST' style='display:inline;'>")
-                                 .append("<input type='hidden' name='bookId' value='").append(b.getBookId()).append("'>")
-                                 .append("<input type='hidden' name='branch' value='").append(branchId).append("'>")
-                                 .append("<button type='submit' class='btn btn-success btn-sm'>Borrow</button></form>");
-                    } else {
-                        tableRows.append("<button class='btn btn-secondary btn-sm' disabled>Out of Stock</button>");
-                    }
-                } else {
-                    tableRows.append("<button type='button' onclick=\"openTransferModal('").append(escapeHtml(b.getTitle())).append("', '").append(escapeHtml(b.getBranchName())).append("')\" class='btn btn-warning btn-sm'>Request Transfer</button>");
-                }
-
-                tableRows.append("</div></td></tr>");
+            // Enforce role separation: Admin trying to access /user goes to /admin
+            if (currentUser.isAdmin()) {
+                redirect(t, "/admin");
+                return;
             }
 
-            if (books.isEmpty()) {
-                tableRows.append("<tr><td colspan='6' style='text-align: center; padding: 2rem; color: var(--text-muted);'>No books matched your search. <button onclick=\"openModal('modalPurchase')\" class='btn btn-primary btn-sm' style='margin-left: 10px;'>Request Purchase</button></td></tr>");
+            Map<String, String> query = parseQuery(t.getRequestURI().getQuery());
+            String searchQuery = query.getOrDefault("q", "");
+            int homeBranchId = currentUser.getBranchId();
+            String homeBranchName = LibraryService.getBranchName(homeBranchId);
+
+            // Fetch member-specific data
+            List<BorrowRecord> borrowedBooks = LibraryService.fetchUserBorrowedBooks(currentUser.getUsername());
+            List<TransferRequest> userTransfers = RequestService.fetchUserTransferRequests(currentUser.getUsername());
+            List<PurchaseRequest> userPurchases = RequestService.fetchUserPurchaseRequests(currentUser.getUsername());
+            List<Book> allCatalogBooks = LibraryService.fetchAllBooks();
+
+            int pendingTransfersCount = 0;
+            for (TransferRequest tr : userTransfers) if ("PENDING".equalsIgnoreCase(tr.getStatus())) pendingTransfersCount++;
+            int pendingPurchasesCount = 0;
+            for (PurchaseRequest pr : userPurchases) if ("PENDING".equalsIgnoreCase(pr.getStatus())) pendingPurchasesCount++;
+
+            // Dynamic Catalog Rows with 3-Case Availability Logic
+            List<Book> filteredBooks = searchQuery.isEmpty() ? allCatalogBooks : LibraryService.searchBooks(searchQuery, null);
+            StringBuilder catalogRows = new StringBuilder();
+
+            for (Book b : filteredBooks) {
+                boolean isHomeBranch = (b.getBranchId() == homeBranchId);
+                boolean hasStockAtRow = (b.getAvailableCopies() > 0);
+
+                // Title-level cross-branch evaluation
+                boolean availableInHomeBranch = false;
+                String alternativeBranchName = null;
+                boolean availableInOtherBranch = false;
+
+                for (Book cb : allCatalogBooks) {
+                    if (cb.getTitle().equalsIgnoreCase(b.getTitle())) {
+                        if (cb.getBranchId() == homeBranchId && cb.getAvailableCopies() > 0) {
+                            availableInHomeBranch = true;
+                        } else if (cb.getBranchId() != homeBranchId && cb.getAvailableCopies() > 0) {
+                            availableInOtherBranch = true;
+                            if (alternativeBranchName == null) {
+                                alternativeBranchName = cb.getBranchName() != null ? cb.getBranchName() : "Branch #" + cb.getBranchId();
+                            }
+                        }
+                    }
+                }
+
+                catalogRows.append("<tr>")
+                           .append("<td><span style='font-family: JetBrains Mono; font-size: 0.85rem; color: var(--text-muted);'>#").append(b.getBookId()).append("</span></td>")
+                           .append("<td><strong style='color: white; font-size: 1rem;'>").append(escapeHtml(b.getTitle())).append("</strong><br><span style='font-size: 0.8rem; color: var(--text-muted);'>").append(escapeHtml(b.getCategory())).append("</span></td>")
+                           .append("<td>").append(escapeHtml(b.getAuthor())).append("</td>")
+                           .append("<td><span class='badge ").append(isHomeBranch ? "badge-blue" : "badge-amber").append("'>").append(escapeHtml(b.getBranchName() != null ? b.getBranchName() : "Branch " + b.getBranchId())).append("</span></td>")
+                           .append("<td><span class='badge ").append(hasStockAtRow ? "badge-green" : "badge-red").append("'>").append(b.getAvailableCopies()).append(" Copies</span></td>")
+                           .append("<td><div style='display: flex; gap: 8px;'>");
+
+                // CASE 1: Book available in member's own branch
+                if (isHomeBranch && hasStockAtRow) {
+                    catalogRows.append("<form action='/action/borrow' method='POST' style='display:inline;' onsubmit=\"this.querySelector('button[type=submit]').disabled=true;\">")
+                               .append("<input type='hidden' name='bookId' value='").append(b.getBookId()).append("'>")
+                               .append("<input type='hidden' name='branch' value='").append(homeBranchId).append("'>")
+                               .append("<button type='submit' class='btn btn-success btn-sm'>📖 Borrow</button></form>");
+                } 
+                // CASE 2: Book NOT available in home branch BUT available in another branch
+                else if ((!isHomeBranch && hasStockAtRow && !availableInHomeBranch) || (isHomeBranch && !hasStockAtRow && availableInOtherBranch)) {
+                    String srcBranch = isHomeBranch ? alternativeBranchName : (b.getBranchName() != null ? b.getBranchName() : "Branch #" + b.getBranchId());
+                    catalogRows.append("<button type='button' onclick=\"openTransferModal('").append(escapeHtml(b.getTitle())).append("', '").append(escapeHtml(srcBranch)).append("')\" class='btn btn-warning btn-sm'>🔄 Request Transfer</button>");
+                } 
+                // CASE 3: Book unavailable in ALL branches
+                else {
+                    catalogRows.append("<button type='button' onclick=\"openPurchaseModal('").append(escapeHtml(b.getTitle())).append("', '").append(escapeHtml(b.getAuthor())).append("', '").append(escapeHtml(b.getCategory())).append("')\" class='btn btn-cyan btn-sm'>✨ Request Purchase</button>");
+                }
+
+                catalogRows.append("</div></td></tr>");
+            }
+
+            if (filteredBooks.isEmpty()) {
+                catalogRows.append("<tr><td colspan='6' style='text-align: center; padding: 2rem; color: var(--text-muted);'>No books matched your query. <button onclick=\"openModal('modalPurchase')\" class='btn btn-primary btn-sm' style='margin-left: 10px;'>Request Purchase</button></td></tr>");
+            }
+
+            // Borrowed Books Rows
+            StringBuilder borrowedRows = new StringBuilder();
+            for (BorrowRecord br : borrowedBooks) {
+                borrowedRows.append("<tr>")
+                            .append("<td><span style='font-family: JetBrains Mono;'>#").append(br.getId()).append("</span></td>")
+                            .append("<td><strong>").append(escapeHtml(br.getBookTitle())).append("</strong></td>")
+                            .append("<td><span class='badge badge-blue'>").append(escapeHtml(br.getBranchName())).append("</span></td>")
+                            .append("<td>").append(escapeHtml(br.getBorrowDate())).append("</td>")
+                            .append("<td><form action='/action/return' method='POST' style='display:inline;' onsubmit=\"this.querySelector('button[type=submit]').disabled=true;\">")
+                            .append("<input type='hidden' name='bookId' value='").append(br.getBookId()).append("'>")
+                            .append("<button type='submit' class='btn btn-success btn-sm'>🔄 Return Book</button></form></td>")
+                            .append("</tr>");
+            }
+
+            if (borrowedBooks.isEmpty()) {
+                borrowedRows.append("<tr><td colspan='5' style='text-align:center; padding: 1.5rem; color: var(--text-muted);'>You currently have no borrowed books. Browse the catalog to borrow books.</td></tr>");
+            }
+
+            // User Transfer Request Rows
+            StringBuilder trUserRows = new StringBuilder();
+            for (TransferRequest tr : userTransfers) {
+                String badgeClass = "PENDING".equalsIgnoreCase(tr.getStatus()) ? "badge-amber" : ("APPROVED".equalsIgnoreCase(tr.getStatus()) ? "badge-green" : "badge-red");
+                String statusMsg;
+                if ("APPROVED".equalsIgnoreCase(tr.getStatus())) {
+                    statusMsg = "Transfer approved. The book has been transferred to " + escapeHtml(tr.getToBranch()) + ".";
+                } else if ("REJECTED".equalsIgnoreCase(tr.getStatus())) {
+                    statusMsg = "Transfer request was rejected by Admin.";
+                } else {
+                    statusMsg = "Transfer request submitted. Pending Admin approval.";
+                }
+
+                trUserRows.append("<tr>")
+                          .append("<td>#").append(tr.getId()).append("</td>")
+                          .append("<td><strong>").append(escapeHtml(tr.getBookName())).append("</strong> (Qty: ").append(tr.getQuantity()).append(")</td>")
+                          .append("<td>").append(escapeHtml(tr.getFromBranch())).append(" → ").append(escapeHtml(tr.getToBranch())).append("</td>")
+                          .append("<td>").append(escapeHtml(tr.getRequestDate())).append("</td>")
+                          .append("<td><span class='badge ").append(badgeClass).append("'>Status: ").append(tr.getStatus()).append("</span>")
+                          .append("<div style='font-size: 0.85rem; margin-top: 4px; color: #cbd5e1;'>“").append(statusMsg).append("”</div></td>")
+                          .append("</tr>");
+            }
+            if (userTransfers.isEmpty()) {
+                trUserRows.append("<tr><td colspan='5' style='text-align:center; color: var(--text-muted);'>No transfer requests submitted.</td></tr>");
+            }
+
+            // User Purchase Request Rows
+            StringBuilder prUserRows = new StringBuilder();
+            for (PurchaseRequest pr : userPurchases) {
+                String badgeClass = "PENDING".equalsIgnoreCase(pr.getStatus()) ? "badge-amber" : ("APPROVED".equalsIgnoreCase(pr.getStatus()) ? "badge-blue" : ("RECEIVED".equalsIgnoreCase(pr.getStatus()) ? "badge-green" : "badge-red"));
+                String statusMsg;
+                if ("APPROVED".equalsIgnoreCase(pr.getStatus())) {
+                    statusMsg = "Purchase request approved by Admin.";
+                } else if ("RECEIVED".equalsIgnoreCase(pr.getStatus())) {
+                    statusMsg = "Book has been received at " + escapeHtml(pr.getRequestedBranch()) + ". You can now borrow it.";
+                } else if ("REJECTED".equalsIgnoreCase(pr.getStatus())) {
+                    statusMsg = "Purchase request was rejected by Admin.";
+                } else {
+                    statusMsg = "Purchase request submitted. Pending Admin approval.";
+                }
+
+                prUserRows.append("<tr>")
+                          .append("<td>#").append(pr.getId()).append("</td>")
+                          .append("<td><strong>").append(escapeHtml(pr.getBookName())).append("</strong></td>")
+                          .append("<td>").append(escapeHtml(pr.getAuthor())).append("</td>")
+                          .append("<td>").append(escapeHtml(pr.getRequestedBranch())).append("</td>")
+                          .append("<td>").append(escapeHtml(pr.getRequestDate())).append("</td>")
+                          .append("<td><span class='badge ").append(badgeClass).append("'>Status: ").append(pr.getStatus()).append("</span>")
+                          .append("<div style='font-size: 0.85rem; margin-top: 4px; color: #cbd5e1;'>“").append(statusMsg).append("”</div></td>")
+                          .append("</tr>");
+            }
+            if (userPurchases.isEmpty()) {
+                prUserRows.append("<tr><td colspan='6' style='text-align:center; color: var(--text-muted);'>No purchase suggestions submitted.</td></tr>");
             }
 
             String html =
-                "<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;'>\n" +
-                "  <div>\n" +
-                "    <h1 style='font-size: 1.85rem; font-weight: 800;'>👋 Welcome, " + escapeHtml(currentUser.getFullName()) + "</h1>\n" +
-                "    <p style='color: var(--text-muted);'>Home Branch: <span class='badge badge-blue' style='font-size: 0.85rem;'>" + escapeHtml(branchName) + "</span> | Username: <span style='color: white; font-weight: 600;'>@" + escapeHtml(currentUser.getUsername()) + "</span></p>\n" +
+                "<div style='margin-bottom: 1.5rem;'>\n" +
+                "  <h1 style='font-size: 1.85rem; font-weight: 800;'>👋 Welcome back, " + escapeHtml(currentUser.getFullName()) + "</h1>\n" +
+                "  <p style='color: var(--text-muted);'>Member Account: <span style='color: white; font-weight: 600;'>@" + escapeHtml(currentUser.getUsername()) + "</span> | Home Branch: <span class='badge badge-blue' style='font-size: 0.85rem;'>" + escapeHtml(homeBranchName) + "</span></p>\n" +
+                "</div>\n" +
+                "<div class='stats-grid'>\n" +
+                "  <div class='stat-card'>\n" +
+                "    <div class='stat-icon' style='background: rgba(99, 102, 241, 0.15); color: #818cf8;'>🏛️</div>\n" +
+                "    <div><div class='stat-val' style='font-size: 1.25rem;'>" + escapeHtml(homeBranchName) + "</div><div class='stat-label'>Your Home Branch</div></div>\n" +
                 "  </div>\n" +
-                "  <div style='display: flex; gap: 10px;'>\n" +
-                "    <button onclick=\"openModal('modalReturn')\" class='btn btn-secondary'>🔄 Return a Book</button>\n" +
-                "    <button onclick=\"openModal('modalPurchase')\" class='btn btn-primary'>✨ Suggest Purchase</button>\n" +
+                "  <div class='stat-card'>\n" +
+                "    <div class='stat-icon' style='background: rgba(16, 185, 129, 0.15); color: #34d399;'>📖</div>\n" +
+                "    <div><div class='stat-val'>" + borrowedBooks.size() + "</div><div class='stat-label'>Active Borrowed Books</div></div>\n" +
+                "  </div>\n" +
+                "  <div class='stat-card'>\n" +
+                "    <div class='stat-icon' style='background: rgba(245, 158, 11, 0.15); color: #fbbf24;'>🔄</div>\n" +
+                "    <div><div class='stat-val'>" + pendingTransfersCount + "</div><div class='stat-label'>Pending Transfers</div></div>\n" +
+                "  </div>\n" +
+                "  <div class='stat-card'>\n" +
+                "    <div class='stat-icon' style='background: rgba(6, 182, 212, 0.15); color: #22d3ee;'>✨</div>\n" +
+                "    <div><div class='stat-val'>" + pendingPurchasesCount + "</div><div class='stat-label'>Pending Purchases</div></div>\n" +
                 "  </div>\n" +
                 "</div>\n" +
-                "<div class='card' style='margin-bottom: 2rem;'>\n" +
-                "  <form action='/user' method='GET' style='display: flex; gap: 12px; flex-wrap: wrap;'>\n" +
-                "    <input type='text' name='q' placeholder='Search by title, author, category, or Book ID...' value='" + escapeHtml(searchQuery) + "' style='flex: 1; min-width: 260px;'>\n" +
-                "    <button type='submit' class='btn btn-primary'>🔍 Search</button>\n" +
-                (searchQuery.isEmpty() ? "" : "    <a href='/user' class='btn btn-secondary'>Clear</a>\n") +
-                "  </form>\n" +
+                "<div class='tabs'>\n" +
+                "  <button class='tab-btn active' onclick=\"switchTab('tabCatalog')\">📚 Book Catalog</button>\n" +
+                "  <button class='tab-btn' onclick=\"switchTab('tabMyBooks')\">📖 My Borrowed Books (" + borrowedBooks.size() + ")</button>\n" +
+                "  <button class='tab-btn' onclick=\"switchTab('tabMyTransfers')\">🔄 My Transfer Requests (" + userTransfers.size() + ")</button>\n" +
+                "  <button class='tab-btn' onclick=\"switchTab('tabMyPurchases')\">✨ My Purchase Requests (" + userPurchases.size() + ")</button>\n" +
                 "</div>\n" +
-                "<div class='card'>\n" +
-                "  <h2 style='font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;'>Inter-Branch Catalog</h2>\n" +
-                "  <div class='table-container'>\n" +
-                "    <table>\n" +
-                "      <thead>\n" +
-                "        <tr><th>ID</th><th>Book Title</th><th>Author</th><th>Branch Location</th><th>Stock</th><th>Action</th></tr>\n" +
-                "      </thead>\n" +
-                "      <tbody>" + tableRows + "</tbody>\n" +
-                "    </table>\n" +
+                "<!-- TAB 1: CATALOG -->\n" +
+                "<div id='tabCatalog' class='tab-content active'>\n" +
+                "  <div class='card' style='margin-bottom: 1.5rem;'>\n" +
+                "    <form action='/user' method='GET' style='display: flex; gap: 12px; flex-wrap: wrap;'>\n" +
+                "      <input type='text' name='q' placeholder='Search by title, author, category, or Book ID...' value='" + escapeHtml(searchQuery) + "' style='flex: 1; min-width: 260px;'>\n" +
+                "      <button type='submit' class='btn btn-primary'>🔍 Search</button>\n" +
+                (searchQuery.isEmpty() ? "" : "      <a href='/user' class='btn btn-secondary'>Clear</a>\n") +
+                "    </form>\n" +
+                "  </div>\n" +
+                "  <div class='card'>\n" +
+                "    <div class='table-container'>\n" +
+                "      <table>\n" +
+                "        <thead>\n" +
+                "          <tr><th>ID</th><th>Book Title & Category</th><th>Author</th><th>Branch</th><th>Copies</th><th>Availability Action</th></tr>\n" +
+                "        </thead>\n" +
+                "        <tbody>" + catalogRows + "</tbody>\n" +
+                "      </table>\n" +
+                "    </div>\n" +
+                "  </div>\n" +
+                "</div>\n" +
+                "<!-- TAB 2: MY BORROWED BOOKS -->\n" +
+                "<div id='tabMyBooks' class='tab-content'>\n" +
+                "  <div class='card'>\n" +
+                "    <h2 style='font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;'>📖 Currently Borrowed Books</h2>\n" +
+                "    <div class='table-container'>\n" +
+                "      <table>\n" +
+                "        <thead><tr><th>Record ID</th><th>Book Title</th><th>Branch</th><th>Borrow Date</th><th>Action</th></tr></thead>\n" +
+                "        <tbody>" + borrowedRows + "</tbody>\n" +
+                "      </table>\n" +
+                "    </div>\n" +
+                "  </div>\n" +
+                "</div>\n" +
+                "<!-- TAB 3: MY TRANSFERS -->\n" +
+                "<div id='tabMyTransfers' class='tab-content'>\n" +
+                "  <div class='card'>\n" +
+                "    <h2 style='font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;'>🔄 Inter-Branch Transfer Requests</h2>\n" +
+                "    <div class='table-container'>\n" +
+                "      <table><thead><tr><th>ID</th><th>Book & Quantity</th><th>Route</th><th>Request Date</th><th>Status</th></tr></thead>\n" +
+                "      <tbody>" + trUserRows + "</tbody></table>\n" +
+                "    </div>\n" +
+                "  </div>\n" +
+                "</div>\n" +
+                "<!-- TAB 4: MY PURCHASES -->\n" +
+                "<div id='tabMyPurchases' class='tab-content'>\n" +
+                "  <div class='card'>\n" +
+                "    <h2 style='font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;'>✨ Purchase Requests</h2>\n" +
+                "    <div class='table-container'>\n" +
+                "      <table><thead><tr><th>ID</th><th>Book Title</th><th>Author</th><th>Requested Branch</th><th>Request Date</th><th>Status</th></tr></thead>\n" +
+                "      <tbody>" + prUserRows + "</tbody></table>\n" +
+                "    </div>\n" +
                 "  </div>\n" +
                 "</div>\n" +
                 "<!-- MODAL: TRANSFER REQUEST -->\n" +
@@ -606,25 +767,12 @@ public class WebUI {
                 "      <h3 class='modal-title'>🔄 Request Inter-Branch Transfer</h3>\n" +
                 "      <button class='modal-close' onclick=\"closeModal('modalTransfer')\">×</button>\n" +
                 "    </div>\n" +
-                "    <form action='/action/transfer' method='POST'>\n" +
-                "      <div class='form-group'><label>Book Name</label><input type='text' id='tfBookName' name='bookName' required readonly></div>\n" +
-                "      <div class='form-group'><label>From Branch</label><input type='text' id='tfFromBranch' name='fromBranch' required readonly></div>\n" +
-                "      <div class='form-group'><label>Deliver To My Branch</label><input type='text' name='toBranch' value='" + escapeHtml(branchName) + "' required readonly></div>\n" +
-                "      <button type='submit' class='btn btn-primary' style='width: 100%;'>Submit Transfer Request</button>\n" +
-                "    </form>\n" +
-                "  </div>\n" +
-                "</div>\n" +
-                "<!-- MODAL: RETURN BOOK -->\n" +
-                "<div id='modalReturn' class='modal-overlay'>\n" +
-                "  <div class='modal'>\n" +
-                "    <div class='modal-header'>\n" +
-                "      <h3 class='modal-title'>🔄 Return Borrowed Book</h3>\n" +
-                "      <button class='modal-close' onclick=\"closeModal('modalReturn')\">×</button>\n" +
-                "    </div>\n" +
-                "    <form action='/action/return' method='POST'>\n" +
-                "      <div class='form-group'><label>Book ID</label><input type='number' name='bookId' placeholder='e.g. 101' required></div>\n" +
-                "      <p style='color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;'>Returning to: <strong>" + escapeHtml(branchName) + "</strong></p>\n" +
-                "      <button type='submit' class='btn btn-success' style='width: 100%;'>Confirm Return</button>\n" +
+                "    <form action='/action/transfer' method='POST' onsubmit=\"this.querySelector('button[type=submit]').disabled=true;\">\n" +
+                "      <div class='form-group'><label>Book Title</label><input type='text' id='tfBookName' name='bookName' required readonly></div>\n" +
+                "      <div class='form-group'><label>Source Branch</label><input type='text' id='tfFromBranch' name='fromBranch' required readonly></div>\n" +
+                "      <div class='form-group'><label>Transfer Destination (Your Branch)</label><input type='text' name='toBranch' value='" + escapeHtml(homeBranchName) + "' required readonly></div>\n" +
+                "      <div class='form-group'><label>Quantity</label><input type='number' name='quantity' value='1' min='1' max='5' required readonly></div>\n" +
+                "      <button type='submit' class='btn btn-warning' style='width: 100%;'>Confirm Transfer Request</button>\n" +
                 "    </form>\n" +
                 "  </div>\n" +
                 "</div>\n" +
@@ -632,13 +780,15 @@ public class WebUI {
                 "<div id='modalPurchase' class='modal-overlay'>\n" +
                 "  <div class='modal'>\n" +
                 "    <div class='modal-header'>\n" +
-                "      <h3 class='modal-title'>✨ Suggest New Book Purchase</h3>\n" +
+                "      <h3 class='modal-title'>✨ Request New Book Purchase</h3>\n" +
                 "      <button class='modal-close' onclick=\"closeModal('modalPurchase')\">×</button>\n" +
                 "    </div>\n" +
-                "    <form action='/action/purchase' method='POST'>\n" +
-                "      <div class='form-group'><label>Book Title</label><input type='text' name='bookName' placeholder='e.g. Systems Performance' required></div>\n" +
-                "      <div class='form-group'><label>Author</label><input type='text' name='author' placeholder='e.g. Brendan Gregg' required></div>\n" +
-                "      <button type='submit' class='btn btn-primary' style='width: 100%;'>Submit Purchase Request</button>\n" +
+                "    <form action='/action/purchase' method='POST' onsubmit=\"this.querySelector('button[type=submit]').disabled=true;\">\n" +
+                "      <div class='form-group'><label>Book Title</label><input type='text' id='prBookName' name='bookName' placeholder='e.g. Designing Data-Intensive Applications' required></div>\n" +
+                "      <div class='form-group'><label>Author</label><input type='text' id='prAuthor' name='author' placeholder='e.g. Martin Kleppmann' required></div>\n" +
+                "      <div class='form-group'><label>Category / Genre</label><input type='text' id='prCategory' name='category' placeholder='e.g. Distributed Systems' value='General'></div>\n" +
+                "      <div class='form-group'><label>Requested Branch</label><input type='text' name='requestedBranch' value='" + escapeHtml(homeBranchName) + "' required readonly></div>\n" +
+                "      <button type='submit' class='btn btn-cyan' style='width: 100%;'>Submit Purchase Request</button>\n" +
                 "    </form>\n" +
                 "  </div>\n" +
                 "</div>\n" +
@@ -648,6 +798,14 @@ public class WebUI {
                 "    document.getElementById('tfFromBranch').value = from;\n" +
                 "    openModal('modalTransfer');\n" +
                 "  }\n" +
+                "  function openPurchaseModal(book, author, category) {\n" +
+                "    document.getElementById('prBookName').value = book || '';\n" +
+                "    document.getElementById('prAuthor').value = author || 'Unknown';\n" +
+                "    if (document.getElementById('prCategory')) {\n" +
+                "      document.getElementById('prCategory').value = category || 'General';\n" +
+                "    }\n" +
+                "    openModal('modalPurchase');\n" +
+                "  }\n" +
                 "</script>";
 
             sendHtml(t, renderPage("Member Dashboard", "user", t.getRequestURI().getQuery(), currentUser, html));
@@ -655,14 +813,20 @@ public class WebUI {
     }
 
     // =========================================================================
-    // 4. ADMIN DASHBOARD & USER MANAGEMENT (Multi-Tab)
+    // 4. ADMIN DASHBOARD & USER MANAGEMENT (Role-Guarded for Admins)
     // =========================================================================
     static class AdminDashboardHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange t) throws IOException {
             User currentUser = getSessionUser(t);
-            if (currentUser == null || !currentUser.isAdmin()) {
-                redirect(t, "/login?role=admin&error=" + encode("Admin credentials required to access this portal."));
+            if (currentUser == null) {
+                redirect(t, "/login?role=admin&msg=" + encode("Please sign in with administrator credentials."));
+                return;
+            }
+
+            // Enforce role separation: Non-admin trying to access /admin goes to /user
+            if (!currentUser.isAdmin()) {
+                redirect(t, "/user?error=" + encode("Access Denied. Administrator privileges required."));
                 return;
             }
 
@@ -672,7 +836,7 @@ public class WebUI {
             List<TransferRequest> transferRequests = RequestService.fetchTransferRequests();
             List<PurchaseRequest> purchaseRequests = RequestService.fetchPurchaseRequests();
 
-            // Book rows
+            // Book rows for Inventory Table (Branch Breakdown)
             StringBuilder bookRows = new StringBuilder();
             for (Book b : books) {
                 bookRows.append("<tr>")
@@ -680,8 +844,8 @@ public class WebUI {
                         .append("<td><strong>").append(escapeHtml(b.getTitle())).append("</strong></td>")
                         .append("<td>").append(escapeHtml(b.getAuthor())).append("</td>")
                         .append("<td>").append(escapeHtml(b.getCategory())).append("</td>")
-                        .append("<td>").append(escapeHtml(b.getBranchName() != null ? b.getBranchName() : "Branch " + b.getBranchId())).append("</td>")
-                        .append("<td><span class='badge badge-blue'>").append(b.getAvailableCopies()).append(" Copies</span></td>")
+                        .append("<td><span class='badge badge-blue'>").append(escapeHtml(b.getBranchName() != null ? b.getBranchName() : "Branch " + b.getBranchId())).append("</span></td>")
+                        .append("<td><span class='badge ").append(b.getAvailableCopies() > 0 ? "badge-green" : "badge-red").append("'>").append(b.getAvailableCopies()).append(" Copies</span></td>")
                         .append("<td><form action='/action/deleteBook' method='POST' onsubmit=\"return confirm('Delete this book?')\">")
                         .append("<input type='hidden' name='bookId' value='").append(b.getBookId()).append("'>")
                         .append("<button type='submit' class='btn btn-danger btn-sm'>Delete</button></form></td>")
@@ -710,62 +874,71 @@ public class WebUI {
                 userRows.append("</td></tr>");
             }
 
-            // Transfer rows
+            // Transfer rows (Pending only for Admin)
+            int pendingTransferCount = 0;
             StringBuilder trRows = new StringBuilder();
             for (TransferRequest tr : transferRequests) {
+                if (!"PENDING".equalsIgnoreCase(tr.getStatus())) continue;
+                pendingTransferCount++;
+                String badgeClass = "badge-amber";
                 trRows.append("<tr>")
                       .append("<td>#").append(tr.getId()).append("</td>")
-                      .append("<td><strong>").append(escapeHtml(tr.getBookName())).append("</strong></td>")
+                      .append("<td><strong>").append(escapeHtml(tr.getBookName())).append("</strong> (Qty: ").append(tr.getQuantity()).append(")</td>")
                       .append("<td>").append(escapeHtml(tr.getFromBranch())).append(" → ").append(escapeHtml(tr.getToBranch())).append("</td>")
                       .append("<td>").append(escapeHtml(tr.getRequesterName())).append("</td>")
-                      .append("<td><span class='badge ").append("PENDING".equals(tr.getStatus()) ? "badge-amber" : "badge-green").append("'>").append(tr.getStatus()).append("</span></td>")
-                      .append("<td><div style='display:flex; gap:6px;'>");
-
-                if ("PENDING".equalsIgnoreCase(tr.getStatus())) {
-                    trRows.append("<form action='/action/updateTransfer' method='POST'>")
-                          .append("<input type='hidden' name='id' value='").append(tr.getId()).append("'>")
-                          .append("<input type='hidden' name='status' value='APPROVED'>")
-                          .append("<button type='submit' class='btn btn-success btn-sm'>Approve</button></form>")
-                          .append("<form action='/action/updateTransfer' method='POST'>")
-                          .append("<input type='hidden' name='id' value='").append(tr.getId()).append("'>")
-                          .append("<input type='hidden' name='status' value='REJECTED'>")
-                          .append("<button type='submit' class='btn btn-danger btn-sm'>Reject</button></form>");
-                } else {
-                    trRows.append("<span style='color: var(--text-muted); font-size: 0.8rem;'>Resolved</span>");
-                }
-                trRows.append("</div></td></tr>");
+                      .append("<td>").append(escapeHtml(tr.getRequestDate())).append("</td>")
+                      .append("<td><span class='badge ").append(badgeClass).append("'>").append(tr.getStatus()).append("</span></td>")
+                      .append("<td><div style='display:flex; gap:6px;'>")
+                      .append("<form action='/action/updateTransfer' method='POST'>")
+                      .append("<input type='hidden' name='id' value='").append(tr.getId()).append("'>")
+                      .append("<input type='hidden' name='status' value='APPROVED'>")
+                      .append("<button type='submit' class='btn btn-success btn-sm'>Approve & Move Inventory</button></form>")
+                      .append("<form action='/action/updateTransfer' method='POST'>")
+                      .append("<input type='hidden' name='id' value='").append(tr.getId()).append("'>")
+                      .append("<input type='hidden' name='status' value='REJECTED'>")
+                      .append("<button type='submit' class='btn btn-danger btn-sm'>Reject</button></form>")
+                      .append("</div></td></tr>");
             }
-            if (transferRequests.isEmpty()) {
-                trRows.append("<tr><td colspan='6' style='text-align:center; color: var(--text-muted);'>No transfer requests.</td></tr>");
+            if (pendingTransferCount == 0) {
+                trRows.append("<tr><td colspan='7' style='text-align:center; color: var(--text-muted);'>No pending transfer requests.</td></tr>");
             }
 
-            // Purchase rows
+            // Purchase rows (Pending / Approved needing action for Admin)
+            int pendingPurchaseCount = 0;
             StringBuilder prRows = new StringBuilder();
             for (PurchaseRequest pr : purchaseRequests) {
+                if (!"PENDING".equalsIgnoreCase(pr.getStatus()) && !"APPROVED".equalsIgnoreCase(pr.getStatus())) continue;
+                pendingPurchaseCount++;
+                String badgeClass = "PENDING".equalsIgnoreCase(pr.getStatus()) ? "badge-amber" : "badge-blue";
                 prRows.append("<tr>")
                       .append("<td>#").append(pr.getId()).append("</td>")
                       .append("<td><strong>").append(escapeHtml(pr.getBookName())).append("</strong></td>")
                       .append("<td>").append(escapeHtml(pr.getAuthor())).append("</td>")
+                      .append("<td>").append(escapeHtml(pr.getRequestedBranch())).append("</td>")
                       .append("<td>").append(escapeHtml(pr.getRequesterName())).append("</td>")
-                      .append("<td><span class='badge ").append("PENDING".equals(pr.getStatus()) ? "badge-amber" : "badge-green").append("'>").append(pr.getStatus()).append("</span></td>")
+                      .append("<td>").append(escapeHtml(pr.getRequestDate())).append("</td>")
+                      .append("<td><span class='badge ").append(badgeClass).append("'>").append(pr.getStatus()).append("</span></td>")
                       .append("<td><div style='display:flex; gap:6px;'>");
 
                 if ("PENDING".equalsIgnoreCase(pr.getStatus())) {
                     prRows.append("<form action='/action/updatePurchase' method='POST'>")
                           .append("<input type='hidden' name='id' value='").append(pr.getId()).append("'>")
                           .append("<input type='hidden' name='status' value='APPROVED'>")
-                          .append("<button type='submit' class='btn btn-success btn-sm'>Approve</button></form>")
+                          .append("<button type='submit' class='btn btn-primary btn-sm'>Approve</button></form>")
                           .append("<form action='/action/updatePurchase' method='POST'>")
                           .append("<input type='hidden' name='id' value='").append(pr.getId()).append("'>")
-                          .append("<input type='hidden' name='status' value='ORDERED'>")
-                          .append("<button type='submit' class='btn btn-primary btn-sm'>Order</button></form>");
-                } else {
-                    prRows.append("<span style='color: var(--text-muted); font-size: 0.8rem;'>Resolved</span>");
+                          .append("<input type='hidden' name='status' value='REJECTED'>")
+                          .append("<button type='submit' class='btn btn-danger btn-sm'>Reject</button></form>");
+                } else if ("APPROVED".equalsIgnoreCase(pr.getStatus())) {
+                    prRows.append("<form action='/action/updatePurchase' method='POST'>")
+                          .append("<input type='hidden' name='id' value='").append(pr.getId()).append("'>")
+                          .append("<input type='hidden' name='status' value='RECEIVED'>")
+                          .append("<button type='submit' class='btn btn-success btn-sm'>📦 MARK AS RECEIVED</button></form>");
                 }
                 prRows.append("</div></td></tr>");
             }
-            if (purchaseRequests.isEmpty()) {
-                trRows.append("<tr><td colspan='6' style='text-align:center; color: var(--text-muted);'>No purchase requests.</td></tr>");
+            if (pendingPurchaseCount == 0) {
+                prRows.append("<tr><td colspan='8' style='text-align:center; color: var(--text-muted);'>No pending purchase requests.</td></tr>");
             }
 
             StringBuilder branchOpts = new StringBuilder();
@@ -781,21 +954,21 @@ public class WebUI {
                 "    <p style='color: var(--text-muted);'>Full Inventory Control, User Administration, Branch Transfers & Acquisitions</p>\n" +
                 "  </div>\n" +
                 "  <div style='display: flex; gap: 10px;'>\n" +
-                "    <button onclick=\"openModal('modalAddUser')\" class='btn btn-primary'>+ Create User</button>\n" +
-                "    <button onclick=\"openModal('modalAddBook')\" class='btn btn-secondary'>+ Add Book</button>\n" +
+                "    <button onclick=\"openModal('modalAddUser')\" class='btn btn-primary'>+ Create User Account</button>\n" +
+                "    <button onclick=\"openModal('modalAddBook')\" class='btn btn-secondary'>+ Add Book to Inventory</button>\n" +
                 "  </div>\n" +
                 "</div>\n" +
                 "<div class='tabs'>\n" +
                 "  <button class='tab-btn active' onclick=\"switchTab('tabBooks')\">📚 Catalog Inventory (" + books.size() + ")</button>\n" +
                 "  <button class='tab-btn' onclick=\"switchTab('tabUsers')\">👥 User Management (" + users.size() + ")</button>\n" +
-                "  <button class='tab-btn' onclick=\"switchTab('tabTransfers')\">🔄 Transfer Requests (" + transferRequests.size() + ")</button>\n" +
-                "  <button class='tab-btn' onclick=\"switchTab('tabPurchases')\">✨ Purchase Requests (" + purchaseRequests.size() + ")</button>\n" +
+                "  <button class='tab-btn' onclick=\"switchTab('tabTransfers')\">🔄 Transfer Requests (" + pendingTransferCount + ")</button>\n" +
+                "  <button class='tab-btn' onclick=\"switchTab('tabPurchases')\">✨ Purchase Requests (" + pendingPurchaseCount + ")</button>\n" +
                 "</div>\n" +
                 "<!-- TAB 1: BOOKS -->\n" +
                 "<div id='tabBooks' class='tab-content active'>\n" +
                 "  <div class='card'>\n" +
                 "    <div class='table-container'>\n" +
-                "      <table><thead><tr><th>ID</th><th>Title</th><th>Author</th><th>Category</th><th>Branch</th><th>Copies</th><th>Manage</th></tr></thead>\n" +
+                "      <table><thead><tr><th>ID</th><th>Title</th><th>Author</th><th>Category</th><th>Assigned Branch</th><th>Copies</th><th>Manage</th></tr></thead>\n" +
                 "      <tbody>" + bookRows + "</tbody></table>\n" +
                 "    </div>\n" +
                 "  </div>\n" +
@@ -816,8 +989,10 @@ public class WebUI {
                 "<!-- TAB 3: TRANSFERS -->\n" +
                 "<div id='tabTransfers' class='tab-content'>\n" +
                 "  <div class='card'>\n" +
+                "    <h2 style='font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;'>🔄 Inter-Branch Transfer Approval Console</h2>\n" +
+                "    <p style='color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;'>Approving a transfer automatically decrements copies from the source branch and adds them to the destination branch.</p>\n" +
                 "    <div class='table-container'>\n" +
-                "      <table><thead><tr><th>ID</th><th>Book</th><th>Route</th><th>Requester</th><th>Status</th><th>Action</th></tr></thead>\n" +
+                "      <table><thead><tr><th>ID</th><th>Book & Quantity</th><th>Route</th><th>Requester</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>\n" +
                 "      <tbody>" + trRows + "</tbody></table>\n" +
                 "    </div>\n" +
                 "  </div>\n" +
@@ -825,8 +1000,10 @@ public class WebUI {
                 "<!-- TAB 4: PURCHASES -->\n" +
                 "<div id='tabPurchases' class='tab-content'>\n" +
                 "  <div class='card'>\n" +
+                "    <h2 style='font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;'>✨ Acquisition Purchase Suggestions</h2>\n" +
+                "    <p style='color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;'>Approving a purchase request changes status to APPROVED. Clicking <strong>MARK AS RECEIVED</strong> automatically adds 1 copy to the requested branch inventory.</p>\n" +
                 "    <div class='table-container'>\n" +
-                "      <table><thead><tr><th>ID</th><th>Book Title</th><th>Author</th><th>Requester</th><th>Status</th><th>Action</th></tr></thead>\n" +
+                "      <table><thead><tr><th>ID</th><th>Book Title</th><th>Author</th><th>Requested Branch</th><th>Requester</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>\n" +
                 "      <tbody>" + prRows + "</tbody></table>\n" +
                 "    </div>\n" +
                 "  </div>\n" +
@@ -927,12 +1104,12 @@ public class WebUI {
                 String token = AuthService.createWebSession(u, p);
                 User user = AuthService.getUserBySessionToken(token);
                 if (user.isAdmin()) {
-                    redirectWithCookie(t, "/admin?msg=" + encode("Welcome back, Administrator " + user.getFullName() + "!"), token);
+                    redirectWithCookie(t, "/admin", token);
                 } else {
-                    redirectWithCookie(t, "/user?msg=" + encode("Welcome back, " + user.getFullName() + "!"), token);
+                    redirectWithCookie(t, "/user", token);
                 }
             } catch (Exception e) {
-                redirect(t, "/login?error=" + encode(e.getMessage()));
+                redirect(t, "/login");
             }
         }
     }
@@ -944,7 +1121,7 @@ public class WebUI {
             if (token != null) {
                 AuthService.invalidateSession(token);
             }
-            redirectWithCookie(t, "/login?msg=" + encode("You have been signed out successfully."), "deleted; Max-Age=0");
+            redirectWithCookie(t, "/login", "deleted; Max-Age=0");
         }
     }
 
@@ -954,7 +1131,7 @@ public class WebUI {
             if (!"POST".equalsIgnoreCase(t.getRequestMethod())) { redirect(t, "/admin"); return; }
             User currentUser = getSessionUser(t);
             if (currentUser == null || !currentUser.isAdmin()) {
-                redirect(t, "/login?error=" + encode("Admin access required."));
+                redirect(t, "/login");
                 return;
             }
 
@@ -968,9 +1145,9 @@ public class WebUI {
 
                 User newUser = new User(0, username, password, fullName, role, branchId);
                 AuthService.createUser(newUser);
-                redirect(t, "/admin?msg=" + encode("User account @" + username + " created successfully!"));
+                redirect(t, "/admin");
             } catch (Exception e) {
-                redirect(t, "/admin?error=" + encode(e.getMessage()));
+                redirect(t, "/admin");
             }
         }
     }
@@ -981,7 +1158,7 @@ public class WebUI {
             if (!"POST".equalsIgnoreCase(t.getRequestMethod())) { redirect(t, "/admin"); return; }
             User currentUser = getSessionUser(t);
             if (currentUser == null || !currentUser.isAdmin()) {
-                redirect(t, "/login?error=" + encode("Admin access required."));
+                redirect(t, "/login");
                 return;
             }
 
@@ -989,9 +1166,9 @@ public class WebUI {
             try {
                 int userId = Integer.parseInt(body.get("userId"));
                 AuthService.deleteUser(userId);
-                redirect(t, "/admin?msg=" + encode("User account #" + userId + " deleted."));
+                redirect(t, "/admin");
             } catch (Exception e) {
-                redirect(t, "/admin?error=" + encode(e.getMessage()));
+                redirect(t, "/admin");
             }
         }
     }
@@ -1005,12 +1182,12 @@ public class WebUI {
 
             Map<String, String> body = parseBody(t.getRequestBody());
             int bookId = Integer.parseInt(body.get("bookId"));
-            int branch = Integer.parseInt(body.get("branch"));
+            int branch = (body.containsKey("branch") && body.get("branch") != null) ? Integer.parseInt(body.get("branch")) : user.getBranchId();
             try {
-                String res = LibraryService.borrowBook(bookId, branch);
-                redirect(t, "/user?msg=" + encode("Book borrowed successfully! " + res));
+                LibraryService.borrowBook(bookId, branch, user.getUsername());
+                redirect(t, "/user");
             } catch (Exception e) {
-                redirect(t, "/user?error=" + encode(e.getMessage()));
+                redirect(t, "/user");
             }
         }
     }
@@ -1026,10 +1203,10 @@ public class WebUI {
             int bookId = Integer.parseInt(body.get("bookId"));
             int branch = user.getBranchId();
             try {
-                LibraryService.returnBook(bookId, branch);
-                redirect(t, "/user?msg=" + encode("Book returned successfully to this branch!"));
+                LibraryService.returnBook(bookId, branch, user.getUsername());
+                redirect(t, "/user");
             } catch (Exception e) {
-                redirect(t, "/user?error=" + encode(e.getMessage()));
+                redirect(t, "/user");
             }
         }
     }
@@ -1046,10 +1223,10 @@ public class WebUI {
             String fromBranch = body.get("fromBranch");
             String toBranch = body.get("toBranch");
             try {
-                RequestService.addTransferRequest(bookName, fromBranch, toBranch, user.getFullName());
-                redirect(t, "/user?msg=" + encode("Transfer request submitted for '" + bookName + "'!"));
+                RequestService.addTransferRequest(bookName, fromBranch, toBranch, user.getUsername());
+                redirect(t, "/user");
             } catch (Exception e) {
-                redirect(t, "/user?error=" + encode(e.getMessage()));
+                redirect(t, "/user");
             }
         }
     }
@@ -1062,13 +1239,16 @@ public class WebUI {
             if (user == null) { redirect(t, "/login"); return; }
 
             Map<String, String> body = parseBody(t.getRequestBody());
-            String bookName = body.get("bookName");
+            String bookName = body.containsKey("bookName") && body.get("bookName") != null ? body.get("bookName") : body.get("bookTitle");
             String author = body.getOrDefault("author", "Unknown");
+            String category = body.getOrDefault("category", "General");
+            String reqBranch = body.containsKey("requestedBranch") && body.get("requestedBranch") != null ? body.get("requestedBranch") : body.getOrDefault("branchName", LibraryService.getBranchName(user.getBranchId()));
             try {
-                RequestService.addPurchaseRequest(bookName, author, user.getFullName());
-                redirect(t, "/user?msg=" + encode("Purchase suggestion submitted for '" + bookName + "'!"));
+                PurchaseRequest pr = new PurchaseRequest(0, bookName, author, category, reqBranch, user.getUsername(), "PENDING", null);
+                RequestService.addPurchaseRequest(pr);
+                redirect(t, "/user");
             } catch (Exception e) {
-                redirect(t, "/user?error=" + encode(e.getMessage()));
+                redirect(t, "/user");
             }
         }
     }
@@ -1090,9 +1270,9 @@ public class WebUI {
                 int branchId = Integer.parseInt(body.get("branchId"));
                 Book book = new Book(bookId, title, author, copies, branchId, category);
                 LibraryService.addBook(book);
-                redirect(t, "/admin?msg=" + encode("Book '" + title + "' added successfully!"));
+                redirect(t, "/admin");
             } catch (Exception e) {
-                redirect(t, "/admin?error=" + encode(e.getMessage()));
+                redirect(t, "/admin");
             }
         }
     }
@@ -1108,9 +1288,9 @@ public class WebUI {
             try {
                 int bookId = Integer.parseInt(body.get("bookId"));
                 LibraryService.deleteBook(bookId);
-                redirect(t, "/admin?msg=" + encode("Book #" + bookId + " deleted successfully!"));
+                redirect(t, "/admin");
             } catch (Exception e) {
-                redirect(t, "/admin?error=" + encode(e.getMessage()));
+                redirect(t, "/admin");
             }
         }
     }
@@ -1127,9 +1307,11 @@ public class WebUI {
             String status = body.get("status");
             try {
                 RequestService.updateTransferStatus(id, status);
-                redirect(t, "/admin?msg=" + encode("Transfer Request #" + id + " updated to " + status));
+                redirect(t, "/admin");
             } catch (Exception e) {
-                redirect(t, "/admin?error=" + encode(e.getMessage()));
+                System.err.println("❌ [UpdateTransfer Action Error]: " + e.getMessage());
+                e.printStackTrace();
+                redirect(t, "/admin");
             }
         }
     }
@@ -1146,9 +1328,11 @@ public class WebUI {
             String status = body.get("status");
             try {
                 RequestService.updatePurchaseStatus(id, status);
-                redirect(t, "/admin?msg=" + encode("Purchase Request #" + id + " updated to " + status));
+                redirect(t, "/admin");
             } catch (Exception e) {
-                redirect(t, "/admin?error=" + encode(e.getMessage()));
+                System.err.println("❌ [UpdatePurchase Action Error]: " + e.getMessage());
+                e.printStackTrace();
+                redirect(t, "/admin");
             }
         }
     }

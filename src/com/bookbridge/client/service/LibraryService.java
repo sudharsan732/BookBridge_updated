@@ -3,6 +3,7 @@ package com.bookbridge.client.service;
 import com.bookbridge.client.NetworkClient;
 import com.bookbridge.model.Book;
 import com.bookbridge.model.Branch;
+import com.bookbridge.model.BorrowRecord;
 import com.bookbridge.network.NetworkMessage;
 
 import java.util.ArrayList;
@@ -32,7 +33,11 @@ public class LibraryService {
     }
 
     public static String borrowBook(int bookId, int userBranch) throws Exception {
-        NetworkMessage req = new NetworkMessage("BORROW_BOOK", new Object[]{bookId, userBranch});
+        return borrowBook(bookId, userBranch, "Member");
+    }
+
+    public static String borrowBook(int bookId, int userBranch, String username) throws Exception {
+        NetworkMessage req = new NetworkMessage("BORROW_BOOK", new Object[]{bookId, userBranch, username});
         NetworkMessage res = NetworkClient.sendRequest(req);
         if (res.success) {
             return res.responseData != null ? res.responseData.toString() : "Success";
@@ -41,11 +46,25 @@ public class LibraryService {
     }
 
     public static void returnBook(int bookId, int userBranch) throws Exception {
-        NetworkMessage req = new NetworkMessage("RETURN_BOOK", new Object[]{bookId, userBranch});
+        returnBook(bookId, userBranch, null);
+    }
+
+    public static void returnBook(int bookId, int userBranch, String username) throws Exception {
+        NetworkMessage req = new NetworkMessage("RETURN_BOOK", new Object[]{bookId, userBranch, username});
         NetworkMessage res = NetworkClient.sendRequest(req);
         if (!res.success) {
             throw new Exception(res.errorMessage != null ? res.errorMessage : "Failed to return book.");
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static List<BorrowRecord> fetchUserBorrowedBooks(String username) {
+        NetworkMessage req = new NetworkMessage("GET_USER_BORROWED_BOOKS", username);
+        NetworkMessage res = NetworkClient.sendRequest(req);
+        if (res.success && res.responseData instanceof List) {
+            return (List<BorrowRecord>) res.responseData;
+        }
+        return new ArrayList<>();
     }
 
     public static void addBook(Book book) throws Exception {

@@ -13,24 +13,31 @@ public class TransferRequest implements Serializable {
     private String fromBranch;
     private String toBranch;
     private String requesterName;
-    private String status; // PENDING, APPROVED, REJECTED, COMPLETED
+    private int quantity;
+    private String status; // PENDING, APPROVED, REJECTED
     private String requestDate;
 
     public TransferRequest() {
+        this.quantity = 1;
         this.status = "PENDING";
         this.requestDate = new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date());
     }
 
     public TransferRequest(String bookName, String fromBranch, String toBranch) {
-        this(0, bookName, fromBranch, toBranch, "Member", "PENDING", new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date()));
+        this(0, bookName, fromBranch, toBranch, "Member", 1, "PENDING", new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date()));
     }
 
     public TransferRequest(int id, String bookName, String fromBranch, String toBranch, String requesterName, String status, String requestDate) {
+        this(id, bookName, fromBranch, toBranch, requesterName, 1, status, requestDate);
+    }
+
+    public TransferRequest(int id, String bookName, String fromBranch, String toBranch, String requesterName, int quantity, String status, String requestDate) {
         this.id = id;
         this.bookName = bookName;
         this.fromBranch = fromBranch;
         this.toBranch = toBranch;
         this.requesterName = requesterName != null ? requesterName : "Member";
+        this.quantity = quantity > 0 ? quantity : 1;
         this.status = status != null ? status : "PENDING";
         this.requestDate = requestDate != null ? requestDate : new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date());
     }
@@ -75,6 +82,14 @@ public class TransferRequest implements Serializable {
         this.requesterName = requesterName;
     }
 
+    public int getQuantity() {
+        return quantity;
+    }
+
+    public void setQuantity(int quantity) {
+        this.quantity = quantity;
+    }
+
     public String getStatus() {
         return status;
     }
@@ -94,8 +109,8 @@ public class TransferRequest implements Serializable {
     @Override
     public String toString() {
         return String.format(
-            "Transfer Request #%d: '%s' | From: %s -> To: %s | Status: %s | Date: %s",
-            id, bookName, fromBranch, toBranch, status, requestDate
+            "Transfer Request #%d: '%s' (Qty: %d) | From: %s -> To: %s | Status: %s | Date: %s",
+            id, bookName, quantity, fromBranch, toBranch, status, requestDate
         );
     }
 }

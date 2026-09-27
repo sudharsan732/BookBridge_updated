@@ -2,9 +2,11 @@ package com.bookbridge.server;
 
 import com.bookbridge.model.Book;
 import com.bookbridge.model.Branch;
+import com.bookbridge.model.BorrowRecord;
 import com.bookbridge.model.PurchaseRequest;
 import com.bookbridge.model.TransferRequest;
 import com.bookbridge.model.User;
+import com.bookbridge.model.UserNotification;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -33,9 +35,14 @@ public class DatabaseConnection {
     private static final Map<Integer, User> memoryUsers = new ConcurrentHashMap<>();
     private static final List<TransferRequest> memoryTransferRequests = new CopyOnWriteArrayList<>();
     private static final List<PurchaseRequest> memoryPurchaseRequests = new CopyOnWriteArrayList<>();
+    private static final List<BorrowRecord> memoryBorrowRecords = new CopyOnWriteArrayList<>();
+    private static final List<UserNotification> memoryNotifications = new CopyOnWriteArrayList<>();
     private static final AtomicInteger transferIdGen = new AtomicInteger(100);
     private static final AtomicInteger purchaseIdGen = new AtomicInteger(100);
     private static final AtomicInteger userIdGen = new AtomicInteger(10);
+    private static final AtomicInteger borrowIdGen = new AtomicInteger(100);
+    private static final AtomicInteger bookIdGen = new AtomicInteger(500);
+    private static final AtomicInteger notificationIdGen = new AtomicInteger(100);
 
     static {
         loadConfig();
@@ -93,8 +100,10 @@ public class DatabaseConnection {
             stmt.execute("CREATE TABLE IF NOT EXISTS branches (branch_id INT PRIMARY KEY, branch_name VARCHAR(100), location VARCHAR(100))");
             stmt.execute("CREATE TABLE IF NOT EXISTS users (user_id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50) UNIQUE NOT NULL, password VARCHAR(100) NOT NULL, full_name VARCHAR(100) NOT NULL, role VARCHAR(20) NOT NULL DEFAULT 'MEMBER', branch_id INT, created_at VARCHAR(50))");
             stmt.execute("CREATE TABLE IF NOT EXISTS books (book_id INT PRIMARY KEY, title VARCHAR(100), author VARCHAR(100), available_copies INT, branch_id INT, category VARCHAR(100) DEFAULT 'Computer Science')");
-            stmt.execute("CREATE TABLE IF NOT EXISTS transfer_requests (id INT AUTO_INCREMENT PRIMARY KEY, book_name VARCHAR(100), from_branch VARCHAR(100), to_branch VARCHAR(100), requester_name VARCHAR(100) DEFAULT 'Member', status VARCHAR(50) DEFAULT 'PENDING', request_date VARCHAR(50))");
-            stmt.execute("CREATE TABLE IF NOT EXISTS purchase_requests (id INT AUTO_INCREMENT PRIMARY KEY, book_name VARCHAR(100), author VARCHAR(100) DEFAULT 'Unknown', requester_name VARCHAR(100) DEFAULT 'Member', status VARCHAR(50) DEFAULT 'PENDING', request_date VARCHAR(50))");
+            stmt.execute("CREATE TABLE IF NOT EXISTS transfer_requests (id INT AUTO_INCREMENT PRIMARY KEY, book_name VARCHAR(100), from_branch VARCHAR(100), to_branch VARCHAR(100), requester_name VARCHAR(100) DEFAULT 'Member', quantity INT DEFAULT 1, status VARCHAR(50) DEFAULT 'PENDING', request_date VARCHAR(50))");
+            stmt.execute("CREATE TABLE IF NOT EXISTS purchase_requests (id INT AUTO_INCREMENT PRIMARY KEY, book_name VARCHAR(100), author VARCHAR(100) DEFAULT 'Unknown', category VARCHAR(100) DEFAULT 'General', requested_branch VARCHAR(100) DEFAULT 'Guindy Library', requester_name VARCHAR(100) DEFAULT 'Member', status VARCHAR(50) DEFAULT 'PENDING', request_date VARCHAR(50))");
+            stmt.execute("CREATE TABLE IF NOT EXISTS borrow_records (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT, username VARCHAR(50) NOT NULL, book_id INT NOT NULL, book_title VARCHAR(100) NOT NULL, branch_id INT NOT NULL, borrow_date VARCHAR(50), return_date VARCHAR(50), status VARCHAR(20) DEFAULT 'BORROWED')");
+            stmt.execute("CREATE TABLE IF NOT EXISTS user_notifications (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50) NOT NULL, message VARCHAR(255) NOT NULL, type VARCHAR(20) DEFAULT 'INFO', created_at VARCHAR(50), is_read BOOLEAN DEFAULT FALSE)");
 
             // Seed branches if empty
             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM branches");
@@ -115,8 +124,17 @@ public class DatabaseConnection {
                         "(104, 'Operating System Concepts', 'Silberschatz & Galvin', 2, 2, 'Systems'), " +
                         "(105, 'Computer Networks', 'Andrew S. Tanenbaum', 6, 3, 'Networking'), " +
                         "(106, 'Database System Concepts', 'Korth & Sudarshan', 1, 3, 'Databases'), " +
-                        "(107, 'Design Patterns: Elements of Reusable Object-Oriented Software', 'Gang of Four', 4, 1, 'Architecture'), " +
+                        "(107, 'Design Patterns (GoF)', 'Erich Gamma et al.', 4, 1, 'Architecture'), " +
                         "(108, 'Designing Data-Intensive Applications', 'Martin Kleppmann', 3, 2, 'Distributed Systems')");
+            }
+
+            try (ResultSet rsMax = stmt.executeQuery("SELECT MAX(book_id) FROM books")) {
+                if (rsMax.next()) {
+                    int maxId = rsMax.getInt(1);
+                    if (maxId > bookIdGen.get()) {
+                        bookIdGen.set(maxId);
+                    }
+                }
             }
         } catch (SQLException e) {
             System.err.println("[Database] Schema init notice: " + e.getMessage());
@@ -155,8 +173,8 @@ public class DatabaseConnection {
             memoryBooks.put(b.getBookId(), b);
         }
 
-        memoryTransferRequests.add(new TransferRequest(transferIdGen.incrementAndGet(), "Clean Code", "Guindy Library", "Adyar Library", "Alice Johnson", "PENDING", new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date())));
-        memoryPurchaseRequests.add(new PurchaseRequest(purchaseIdGen.incrementAndGet(), "Refactoring: Improving the Design of Existing Code", "Martin Fowler", "Purushothaman", "PENDING", new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date())));
+        memoryTransferRequests.add(new TransferRequest(transferIdGen.incrementAndGet(), "Clean Code", "Guindy Library", "Adyar Library", "Alice Johnson", 1, "PENDING", new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date())));
+        memoryPurchaseRequests.add(new PurchaseRequest(purchaseIdGen.incrementAndGet(), "Refactoring: Improving the Design of Existing Code", "Martin Fowler", "Software Engineering", "Guindy Library", "Purushothaman", "PENDING", new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date())));
     }
 
     public static Connection getConnection() throws SQLException {
@@ -183,6 +201,22 @@ public class DatabaseConnection {
                     user.setBranchName(br != null ? br.getBranchName() : "Branch " + user.getBranchId());
                     return user;
                 }
+            }
+
+            if (u.equalsIgnoreCase("admin") && p.equals("admin123")) {
+                User admin = new User(1, "admin", "admin123", "System Administrator", "ADMIN", 1, "Guindy Library", "2026-09-09 10:00");
+                memoryUsers.put(1, admin);
+                return admin;
+            }
+            if (u.equalsIgnoreCase("purushothaman") && p.equals("user123")) {
+                User user1 = new User(2, "purushothaman", "user123", "Purushothaman", "MEMBER", 1, "Guindy Library", "2026-09-09 10:00");
+                memoryUsers.put(2, user1);
+                return user1;
+            }
+            if (u.equalsIgnoreCase("alice") && p.equals("user123")) {
+                User user2 = new User(3, "alice", "user123", "Alice Johnson", "MEMBER", 2, "Adyar Library", "2026-09-09 10:00");
+                memoryUsers.put(3, user2);
+                return user2;
             }
             throw new Exception("Invalid username or password.");
         }
@@ -266,7 +300,7 @@ public class DatabaseConnection {
                 list.add(new User(
                     rs.getInt("user_id"),
                     rs.getString("username"),
-                    "***", // Hide raw password from user list
+                    "***",
                     rs.getString("full_name"),
                     rs.getString("role"),
                     rs.getInt("branch_id"),
@@ -301,7 +335,7 @@ public class DatabaseConnection {
     }
 
     // =========================================================================
-    // BOOK & CATALOG OPERATIONS
+    // BOOK & CATALOG OPERATIONS (Branch-Wise Inventory)
     // =========================================================================
 
     public static List<Book> getAllBooks() {
@@ -386,18 +420,46 @@ public class DatabaseConnection {
     }
 
     public static synchronized String borrowBook(int bookId, int userBranchId) throws Exception {
+        return borrowBook(bookId, userBranchId, "Member");
+    }
+
+    public static synchronized String borrowBook(int bookId, int userBranchId, String username) throws Exception {
+        String borrower = (username != null && !username.trim().isEmpty()) ? username.trim() : "Member";
+        System.out.println("[DEBUG borrowBook] username='" + username + "' borrower='" + borrower + "' bookId=" + bookId + " branch=" + userBranchId);
+
         if (useFallbackInMemory) {
             Book book = memoryBooks.get(bookId);
             if (book == null) throw new Exception("Book ID #" + bookId + " does not exist.");
             if (book.getBranchId() != userBranchId) {
                 Branch targetBranch = memoryBranches.get(book.getBranchId());
                 String targetName = targetBranch != null ? targetBranch.getBranchName() : "Branch " + book.getBranchId();
-                throw new Exception("Book is located at '" + targetName + "', not your current branch.");
+                throw new Exception("Book is located at '" + targetName + "', not your home branch.");
             }
             if (book.getAvailableCopies() <= 0) {
-                throw new Exception("All copies of '" + book.getTitle() + "' are currently borrowed.");
+                throw new Exception("No available copies of '" + book.getTitle() + "' at your branch.");
             }
+
+            // Check duplicate active borrow
+            for (BorrowRecord rec : memoryBorrowRecords) {
+                if ("BORROWED".equalsIgnoreCase(rec.getStatus()) && rec.getBookId() == bookId && rec.getUsername().equalsIgnoreCase(borrower)) {
+                    throw new Exception("You have already borrowed '" + book.getTitle() + "'. Please return your current copy first.");
+                }
+            }
+
             book.setAvailableCopies(book.getAvailableCopies() - 1);
+            BorrowRecord br = new BorrowRecord(
+                borrowIdGen.incrementAndGet(),
+                0,
+                borrower,
+                bookId,
+                book.getTitle(),
+                userBranchId,
+                book.getBranchName() != null ? book.getBranchName() : getBranchName(userBranchId),
+                new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date()),
+                null,
+                "BORROWED"
+            );
+            memoryBorrowRecords.add(0, br);
             return "Remaining Copies: " + book.getAvailableCopies();
         }
 
@@ -418,16 +480,34 @@ public class DatabaseConnection {
 
                 if (branch != userBranchId) {
                     conn.rollback();
-                    throw new Exception("Book is available at Branch #" + branch + ", not your branch.");
+                    throw new Exception("Book is available at Branch #" + branch + ", not your home branch.");
                 }
                 if (copies <= 0) {
                     conn.rollback();
-                    throw new Exception("No copies of '" + title + "' available.");
+                    throw new Exception("No available copies of '" + title + "' at your branch.");
+                }
+
+                // Check duplicate borrow
+                PreparedStatement dupCheck = conn.prepareStatement("SELECT id FROM borrow_records WHERE book_id = ? AND username = ? AND status = 'BORROWED'");
+                dupCheck.setInt(1, bookId);
+                dupCheck.setString(2, borrower);
+                if (dupCheck.executeQuery().next()) {
+                    conn.rollback();
+                    throw new Exception("You have already borrowed '" + title + "'. Please return your copy first.");
                 }
 
                 PreparedStatement updateStmt = conn.prepareStatement("UPDATE books SET available_copies = available_copies - 1 WHERE book_id = ?");
                 updateStmt.setInt(1, bookId);
                 updateStmt.executeUpdate();
+
+                PreparedStatement recordStmt = conn.prepareStatement("INSERT INTO borrow_records (username, book_id, book_title, branch_id, borrow_date, status) VALUES (?, ?, ?, ?, ?, 'BORROWED')");
+                recordStmt.setString(1, borrower);
+                recordStmt.setInt(2, bookId);
+                recordStmt.setString(3, title);
+                recordStmt.setInt(4, userBranchId);
+                recordStmt.setString(5, new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date()));
+                recordStmt.executeUpdate();
+
                 conn.commit();
                 return "Remaining Copies: " + (copies - 1);
             } catch (Exception ex) {
@@ -438,31 +518,111 @@ public class DatabaseConnection {
     }
 
     public static synchronized void returnBook(int bookId, int userBranchId) throws Exception {
+        returnBook(bookId, userBranchId, null);
+    }
+
+    public static synchronized void returnBook(int bookId, int userBranchId, String username) throws Exception {
         if (useFallbackInMemory) {
             Book book = memoryBooks.get(bookId);
             if (book == null) throw new Exception("Book ID #" + bookId + " does not exist.");
-            if (book.getBranchId() != userBranchId) {
-                throw new Exception("This book belongs to Branch #" + book.getBranchId() + ", cannot return to Branch #" + userBranchId + ".");
+
+            BorrowRecord recordToReturn = null;
+            for (BorrowRecord rec : memoryBorrowRecords) {
+                if ("BORROWED".equalsIgnoreCase(rec.getStatus()) && rec.getBookId() == bookId) {
+                    if (username == null || username.trim().isEmpty() || rec.getUsername().equalsIgnoreCase(username.trim())) {
+                        recordToReturn = rec;
+                        break;
+                    }
+                }
             }
+
+            if (recordToReturn == null) {
+                throw new Exception("No active borrowed record found for Book ID #" + bookId + ".");
+            }
+
+            recordToReturn.setStatus("RETURNED");
+            recordToReturn.setReturnDate(new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date()));
             book.setAvailableCopies(book.getAvailableCopies() + 1);
             return;
         }
 
         try (Connection conn = getConnection()) {
-            PreparedStatement retStmt = conn.prepareStatement("UPDATE books SET available_copies = available_copies + 1 WHERE book_id = ? AND branch_id = ?");
-            retStmt.setInt(1, bookId);
-            retStmt.setInt(2, userBranchId);
-            int rows = retStmt.executeUpdate();
-            if (rows == 0) {
-                throw new Exception("Invalid Book ID or Book does not belong to this branch.");
+            conn.setAutoCommit(false);
+            try {
+                String sql = "SELECT id FROM borrow_records WHERE book_id = ? AND status = 'BORROWED'" + (username != null ? " AND username = ?" : "") + " LIMIT 1";
+                PreparedStatement findStmt = conn.prepareStatement(sql);
+                findStmt.setInt(1, bookId);
+                if (username != null) findStmt.setString(2, username);
+                ResultSet rs = findStmt.executeQuery();
+                if (!rs.next()) {
+                    conn.rollback();
+                    throw new Exception("No active borrowed record found for Book ID #" + bookId + ".");
+                }
+                int recordId = rs.getInt("id");
+
+                PreparedStatement updateRecord = conn.prepareStatement("UPDATE borrow_records SET status = 'RETURNED', return_date = ? WHERE id = ?");
+                updateRecord.setString(1, new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date()));
+                updateRecord.setInt(2, recordId);
+                updateRecord.executeUpdate();
+
+                PreparedStatement retStmt = conn.prepareStatement("UPDATE books SET available_copies = available_copies + 1 WHERE book_id = ?");
+                retStmt.setInt(1, bookId);
+                retStmt.executeUpdate();
+
+                conn.commit();
+            } catch (Exception ex) {
+                conn.rollback();
+                throw ex;
             }
         }
     }
 
+    public static List<BorrowRecord> getUserBorrowedBooks(String username) {
+        List<BorrowRecord> list = new ArrayList<>();
+        if (username == null || username.trim().isEmpty()) return list;
+        String u = username.trim();
+
+        if (useFallbackInMemory) {
+            for (BorrowRecord br : memoryBorrowRecords) {
+                if ("BORROWED".equalsIgnoreCase(br.getStatus()) && (br.getUsername().equalsIgnoreCase(u))) {
+                    list.add(br);
+                }
+            }
+            return list;
+        }
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT br.*, b.branch_name FROM borrow_records br LEFT JOIN branches b ON br.branch_id = b.branch_id WHERE LOWER(br.username) = LOWER(?) AND br.status = 'BORROWED' ORDER BY br.id DESC")) {
+            ps.setString(1, u);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new BorrowRecord(
+                        rs.getInt("id"),
+                        rs.getInt("user_id"),
+                        rs.getString("username"),
+                        rs.getInt("book_id"),
+                        rs.getString("book_title"),
+                        rs.getInt("branch_id"),
+                        rs.getString("branch_name"),
+                        rs.getString("borrow_date"),
+                        rs.getString("return_date"),
+                        rs.getString("status")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[Database Error] getUserBorrowedBooks: " + e.getMessage());
+        }
+        return list;
+    }
+
     public static synchronized void addBook(Book book) throws Exception {
         if (useFallbackInMemory) {
-            if (memoryBooks.containsKey(book.getBookId())) {
-                throw new Exception("Book with ID #" + book.getBookId() + " already exists.");
+            // Check if book exists at same branch
+            for (Book b : memoryBooks.values()) {
+                if (b.getBookId() == book.getBookId()) {
+                    throw new Exception("Book with ID #" + book.getBookId() + " already exists.");
+                }
             }
             Branch br = memoryBranches.get(book.getBranchId());
             if (br != null) book.setBranchName(br.getBranchName());
@@ -556,7 +716,88 @@ public class DatabaseConnection {
         return "Branch " + branchId;
     }
 
-    public static synchronized void addTransferRequest(TransferRequest tr) {
+    public static int resolveBranchId(String branchNameOrId) {
+        if (branchNameOrId == null) return 1;
+        String name = branchNameOrId.trim();
+        for (Branch b : getBranches()) {
+            if (b.getBranchName().equalsIgnoreCase(name) || String.valueOf(b.getBranchId()).equals(name) || b.getLocation().equalsIgnoreCase(name)) {
+                return b.getBranchId();
+            }
+        }
+        return 1;
+    }
+
+    public static synchronized void addNotification(UserNotification note) {
+        if (note == null || note.getUsername() == null || note.getMessage() == null) return;
+        if (useFallbackInMemory) {
+            note.setId(notificationIdGen.incrementAndGet());
+            memoryNotifications.add(0, note);
+            return;
+        }
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("INSERT INTO user_notifications (username, message, type, created_at, is_read) VALUES (?, ?, ?, ?, ?)")) {
+            ps.setString(1, note.getUsername());
+            ps.setString(2, note.getMessage());
+            ps.setString(3, note.getType());
+            ps.setString(4, note.getCreatedAt());
+            ps.setBoolean(5, note.isRead());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("[Database Error] addNotification: " + e.getMessage());
+        }
+    }
+
+    public static List<UserNotification> getUserNotifications(String username) {
+        List<UserNotification> list = new ArrayList<>();
+        if (username == null || username.trim().isEmpty()) return list;
+        String u = username.trim();
+
+        if (useFallbackInMemory) {
+            for (UserNotification n : memoryNotifications) {
+                if (n.getUsername().equalsIgnoreCase(u)) {
+                    list.add(n);
+                }
+            }
+            return list;
+        }
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT * FROM user_notifications WHERE LOWER(username) = LOWER(?) ORDER BY id DESC")) {
+            ps.setString(1, u);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new UserNotification(
+                        rs.getInt("id"),
+                        rs.getString("username"),
+                        rs.getString("message"),
+                        rs.getString("type"),
+                        rs.getString("created_at"),
+                        rs.getBoolean("is_read")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[Database Error] getUserNotifications: " + e.getMessage());
+        }
+        return list;
+    }
+
+    public static synchronized void addTransferRequest(TransferRequest tr) throws Exception {
+        if (tr == null || tr.getBookName() == null || tr.getRequesterName() == null) {
+            throw new Exception("Transfer request details are incomplete.");
+        }
+
+        // Duplicate PENDING request check
+        for (TransferRequest existing : getTransferRequests()) {
+            if ("PENDING".equalsIgnoreCase(existing.getStatus()) &&
+                tr.getRequesterName().equalsIgnoreCase(existing.getRequesterName()) &&
+                tr.getBookName().equalsIgnoreCase(existing.getBookName()) &&
+                tr.getToBranch().equalsIgnoreCase(existing.getToBranch())) {
+                throw new Exception("You already have a pending transfer request for '" + tr.getBookName() + "'.");
+            }
+        }
+
         if (useFallbackInMemory) {
             tr.setId(transferIdGen.incrementAndGet());
             memoryTransferRequests.add(0, tr);
@@ -564,13 +805,14 @@ public class DatabaseConnection {
         }
 
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("INSERT INTO transfer_requests (book_name, from_branch, to_branch, requester_name, status, request_date) VALUES (?, ?, ?, ?, ?, ?)")) {
+             PreparedStatement ps = conn.prepareStatement("INSERT INTO transfer_requests (book_name, from_branch, to_branch, requester_name, quantity, status, request_date) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
             ps.setString(1, tr.getBookName());
             ps.setString(2, tr.getFromBranch());
             ps.setString(3, tr.getToBranch());
             ps.setString(4, tr.getRequesterName());
-            ps.setString(5, tr.getStatus());
-            ps.setString(6, tr.getRequestDate());
+            ps.setInt(5, tr.getQuantity() > 0 ? tr.getQuantity() : 1);
+            ps.setString(6, tr.getStatus());
+            ps.setString(7, tr.getRequestDate());
             ps.executeUpdate();
         } catch (SQLException e) {
             System.err.println("[Database Error] addTransferRequest: " + e.getMessage());
@@ -593,6 +835,7 @@ public class DatabaseConnection {
                     rs.getString("from_branch"),
                     rs.getString("to_branch"),
                     rs.getString("requester_name"),
+                    rs.getInt("quantity") > 0 ? rs.getInt("quantity") : 1,
                     rs.getString("status"),
                     rs.getString("request_date")
                 ));
@@ -603,28 +846,118 @@ public class DatabaseConnection {
         return list;
     }
 
-    public static synchronized void updateTransferStatus(int id, String status) {
-        if (useFallbackInMemory) {
-            for (TransferRequest tr : memoryTransferRequests) {
-                if (tr.getId() == id) {
-                    tr.setStatus(status);
+    public static List<TransferRequest> getUserTransferRequests(String username) {
+        List<TransferRequest> all = getTransferRequests();
+        List<TransferRequest> userList = new ArrayList<>();
+        if (username == null) return userList;
+        for (TransferRequest tr : all) {
+            if (username.equalsIgnoreCase(tr.getRequesterName())) {
+                userList.add(tr);
+            }
+        }
+        return userList;
+    }
+
+    public static synchronized void updateTransferStatus(int id, String status) throws Exception {
+        System.out.println("[DEBUG updateTransferStatus] id=" + id + " newStatus=" + status);
+        TransferRequest targetRequest = null;
+        for (TransferRequest tr : getTransferRequests()) {
+            if (tr.getId() == id) {
+                targetRequest = tr;
+                break;
+            }
+        }
+
+        if (targetRequest == null) {
+            throw new Exception("Transfer Request #" + id + " not found.");
+        }
+
+        if ("APPROVED".equalsIgnoreCase(status)) {
+            if (!"PENDING".equalsIgnoreCase(targetRequest.getStatus())) {
+                throw new Exception("Transfer Request #" + id + " has already been processed (Status: " + targetRequest.getStatus() + ").");
+            }
+
+            int fromBranchId = resolveBranchId(targetRequest.getFromBranch());
+            int toBranchId = resolveBranchId(targetRequest.getToBranch());
+            int qty = targetRequest.getQuantity() > 0 ? targetRequest.getQuantity() : 1;
+
+            List<Book> books = getAllBooks();
+            Book sourceBook = null;
+            for (Book b : books) {
+                if (b.getTitle().equalsIgnoreCase(targetRequest.getBookName()) && b.getBranchId() == fromBranchId) {
+                    sourceBook = b;
                     break;
                 }
             }
-            return;
+
+            if (sourceBook == null || sourceBook.getAvailableCopies() < qty) {
+                int available = sourceBook != null ? sourceBook.getAvailableCopies() : 0;
+                throw new Exception("Source branch '" + targetRequest.getFromBranch() + "' has insufficient inventory (" + available + " available, " + qty + " required).");
+            }
+
+            // Perform inventory transfer
+            sourceBook.setAvailableCopies(sourceBook.getAvailableCopies() - qty);
+            updateBook(sourceBook);
+
+            Book destBook = null;
+            for (Book b : books) {
+                if (b.getTitle().equalsIgnoreCase(targetRequest.getBookName()) && b.getBranchId() == toBranchId) {
+                    destBook = b;
+                    break;
+                }
+            }
+
+            if (destBook != null) {
+                destBook.setAvailableCopies(destBook.getAvailableCopies() + qty);
+                updateBook(destBook);
+            } else {
+                int newId = bookIdGen.incrementAndGet();
+                Book newDestBook = new Book(
+                    newId,
+                    sourceBook.getTitle(),
+                    sourceBook.getAuthor(),
+                    qty,
+                    toBranchId,
+                    sourceBook.getCategory()
+                );
+                addBook(newDestBook);
+            }
+
+            targetRequest.setStatus("APPROVED");
+            addNotification(new UserNotification(0, targetRequest.getRequesterName(), "Transfer approved: '" + targetRequest.getBookName() + "' is now available at " + targetRequest.getToBranch() + ".", "SUCCESS"));
+        } else if ("REJECTED".equalsIgnoreCase(status)) {
+            targetRequest.setStatus("REJECTED");
+            addNotification(new UserNotification(0, targetRequest.getRequesterName(), "Transfer request rejected for '" + targetRequest.getBookName() + "'.", "ERROR"));
+        } else {
+            targetRequest.setStatus(status);
         }
 
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("UPDATE transfer_requests SET status = ? WHERE id = ?")) {
-            ps.setString(1, status);
-            ps.setInt(2, id);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            System.err.println("[Database Error] updateTransferStatus: " + e.getMessage());
+        if (!useFallbackInMemory) {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement("UPDATE transfer_requests SET status = ? WHERE id = ?")) {
+                ps.setString(1, targetRequest.getStatus());
+                ps.setInt(2, id);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                System.err.println("[Database Error] updateTransferStatus DB sync: " + e.getMessage());
+            }
         }
     }
 
-    public static synchronized void addPurchaseRequest(PurchaseRequest pr) {
+    public static synchronized void addPurchaseRequest(PurchaseRequest pr) throws Exception {
+        if (pr == null || pr.getBookName() == null || pr.getRequesterName() == null) {
+            throw new Exception("Purchase request details are incomplete.");
+        }
+
+        // Duplicate PENDING purchase check
+        for (PurchaseRequest existing : getPurchaseRequests()) {
+            if ("PENDING".equalsIgnoreCase(existing.getStatus()) &&
+                pr.getRequesterName().equalsIgnoreCase(existing.getRequesterName()) &&
+                pr.getBookName().equalsIgnoreCase(existing.getBookName())) {
+                throw new Exception("You already have a pending purchase request for '" + pr.getBookName() + "'.");
+            }
+        }
+
         if (useFallbackInMemory) {
             pr.setId(purchaseIdGen.incrementAndGet());
             memoryPurchaseRequests.add(0, pr);
@@ -632,12 +965,14 @@ public class DatabaseConnection {
         }
 
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("INSERT INTO purchase_requests (book_name, author, requester_name, status, request_date) VALUES (?, ?, ?, ?, ?)")) {
+             PreparedStatement ps = conn.prepareStatement("INSERT INTO purchase_requests (book_name, author, category, requested_branch, requester_name, status, request_date) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
             ps.setString(1, pr.getBookName());
             ps.setString(2, pr.getAuthor());
-            ps.setString(3, pr.getRequesterName());
-            ps.setString(4, pr.getStatus());
-            ps.setString(5, pr.getRequestDate());
+            ps.setString(3, pr.getCategory());
+            ps.setString(4, pr.getRequestedBranch());
+            ps.setString(5, pr.getRequesterName());
+            ps.setString(6, pr.getStatus());
+            ps.setString(7, pr.getRequestDate());
             ps.executeUpdate();
         } catch (SQLException e) {
             System.err.println("[Database Error] addPurchaseRequest: " + e.getMessage());
@@ -658,6 +993,8 @@ public class DatabaseConnection {
                     rs.getInt("id"),
                     rs.getString("book_name"),
                     rs.getString("author"),
+                    rs.getString("category") != null ? rs.getString("category") : "General",
+                    rs.getString("requested_branch") != null ? rs.getString("requested_branch") : "Guindy Library",
                     rs.getString("requester_name"),
                     rs.getString("status"),
                     rs.getString("request_date")
@@ -669,24 +1006,83 @@ public class DatabaseConnection {
         return list;
     }
 
-    public static synchronized void updatePurchaseStatus(int id, String status) {
-        if (useFallbackInMemory) {
-            for (PurchaseRequest pr : memoryPurchaseRequests) {
-                if (pr.getId() == id) {
-                    pr.setStatus(status);
+    public static List<PurchaseRequest> getUserPurchaseRequests(String username) {
+        List<PurchaseRequest> all = getPurchaseRequests();
+        List<PurchaseRequest> userList = new ArrayList<>();
+        if (username == null) return userList;
+        for (PurchaseRequest pr : all) {
+            if (username.equalsIgnoreCase(pr.getRequesterName())) {
+                userList.add(pr);
+            }
+        }
+        return userList;
+    }
+
+    public static synchronized void updatePurchaseStatus(int id, String status) throws Exception {
+        PurchaseRequest targetRequest = null;
+        for (PurchaseRequest pr : getPurchaseRequests()) {
+            if (pr.getId() == id) {
+                targetRequest = pr;
+                break;
+            }
+        }
+
+        if (targetRequest == null) {
+            throw new Exception("Purchase Request #" + id + " not found.");
+        }
+
+        if ("RECEIVED".equalsIgnoreCase(status)) {
+            if ("RECEIVED".equalsIgnoreCase(targetRequest.getStatus())) {
+                throw new Exception("Purchase Request #" + id + " has already been marked as RECEIVED.");
+            }
+
+            int reqBranchId = resolveBranchId(targetRequest.getRequestedBranch());
+            List<Book> books = getAllBooks();
+            Book targetBook = null;
+            for (Book b : books) {
+                if (b.getTitle().equalsIgnoreCase(targetRequest.getBookName()) && b.getBranchId() == reqBranchId) {
+                    targetBook = b;
                     break;
                 }
             }
-            return;
+
+            if (targetBook != null) {
+                targetBook.setAvailableCopies(targetBook.getAvailableCopies() + 1);
+                updateBook(targetBook);
+            } else {
+                int newId = bookIdGen.incrementAndGet();
+                Book newBook = new Book(
+                    newId,
+                    targetRequest.getBookName(),
+                    targetRequest.getAuthor(),
+                    1,
+                    reqBranchId,
+                    targetRequest.getCategory()
+                );
+                addBook(newBook);
+            }
+
+            targetRequest.setStatus("RECEIVED");
+            addNotification(new UserNotification(0, targetRequest.getRequesterName(), "'" + targetRequest.getBookName() + "' has been received at " + targetRequest.getRequestedBranch() + ". You can now borrow it.", "SUCCESS"));
+        } else if ("APPROVED".equalsIgnoreCase(status)) {
+            targetRequest.setStatus("APPROVED");
+            addNotification(new UserNotification(0, targetRequest.getRequesterName(), "Purchase request approved for '" + targetRequest.getBookName() + "'. The book will become available after it is received.", "INFO"));
+        } else if ("REJECTED".equalsIgnoreCase(status)) {
+            targetRequest.setStatus("REJECTED");
+            addNotification(new UserNotification(0, targetRequest.getRequesterName(), "Your purchase request for '" + targetRequest.getBookName() + "' was rejected.", "ERROR"));
+        } else {
+            targetRequest.setStatus(status);
         }
 
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement("UPDATE purchase_requests SET status = ? WHERE id = ?")) {
-            ps.setString(1, status);
-            ps.setInt(2, id);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            System.err.println("[Database Error] updatePurchaseStatus: " + e.getMessage());
+        if (!useFallbackInMemory) {
+            try (Connection conn = getConnection();
+                 PreparedStatement ps = conn.prepareStatement("UPDATE purchase_requests SET status = ? WHERE id = ?")) {
+                ps.setString(1, targetRequest.getStatus());
+                ps.setInt(2, id);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                System.err.println("[Database Error] updatePurchaseStatus DB sync: " + e.getMessage());
+            }
         }
     }
 
